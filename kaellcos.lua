@@ -2,7 +2,7 @@ local Players = game:GetService("Players")
 local RunService = game:GetService("RunService")
 local ReplicatedStorage = game:GetService("ReplicatedStorage")
 local Workspace = game:GetService("Workspace")
-local VirtualUser = game:GetService("VirtualUser")
+local UserInputService = game:GetService("UserInputService")
 
 local LP = Players.LocalPlayer
 
@@ -11,19 +11,19 @@ local toggles = {
     AutoDrink = false,
     AutoGrow = false,
     AutoMushroom = false,
+    AutoEvent = false,
+    AutoBreath = false,
     Hitbox = false,
     ESP = false,
     Speed = false,
-    AntiAFK = true
+    InfJump = false
 }
 
--- Helper: Safe Remote Firing (Anti-Kick/Spam Detect)
 local function safeFire(remote, ...)
     if not remote then return end
     task.spawn(function()
         pcall(function()
-            -- Delay acak biar server nggak ngira ini bot spam
-            task.wait(math.random(10, 30) / 100)
+            task.wait(math.random(15, 40) / 100)
             remote:FireServer(...)
         end)
     end)
@@ -43,16 +43,21 @@ local function getRemote(name)
     return nil
 end
 
--- UI Setup
+-- Pakai CoreGui biar gak dihapus game
 local ScreenGui = Instance.new("ScreenGui")
-ScreenGui.Name = "CoS_Hub_Secure"
+ScreenGui.Name = "CoS_Hub_Updated"
 ScreenGui.ResetOnSpawn = false
 ScreenGui.ZIndexBehavior = Enum.ZIndexBehavior.Sibling
-ScreenGui.Parent = LP:WaitForChild("PlayerGui")
+pcall(function()
+    ScreenGui.Parent = game:GetService("CoreGui")
+end)
+if not ScreenGui.Parent then
+    ScreenGui.Parent = LP:WaitForChild("PlayerGui")
+end
 
 local Main = Instance.new("Frame")
 Main.Name = "Main"
-Main.Size = UDim2.new(0, 240, 0, 380)
+Main.Size = UDim2.new(0, 240, 0, 450)
 Main.Position = UDim2.new(0.5, -120, 0.1, 0)
 Main.BackgroundColor3 = Color3.fromRGB(15, 15, 20)
 Main.BorderSizePixel = 0
@@ -68,7 +73,7 @@ local Title = Instance.new("TextLabel")
 Title.Size = UDim2.new(1, 0, 0, 40)
 Title.BackgroundColor3 = Color3.fromRGB(25, 25, 35)
 Title.BackgroundTransparency = 0.5
-Title.Text = "CoS Hub | Protected"
+Title.Text = "CoS Hub | v3.0"
 Title.TextColor3 = Color3.fromRGB(0, 255, 200)
 Title.Font = Enum.Font.GothamBold
 Title.TextSize = 14
@@ -114,28 +119,31 @@ createToggle("Auto Eat", "AutoEat")
 createToggle("Auto Drink", "AutoDrink")
 createToggle("Auto Grow", "AutoGrow")
 createToggle("Auto Mushroom", "AutoMushroom")
+createToggle("Auto Event (TP)", "AutoEvent")
+createToggle("Auto Breath (Spam)", "AutoBreath")
 createToggle("Hitbox Expander", "Hitbox")
 createToggle("Player ESP", "ESP")
 createToggle("Speed (Client)", "Speed")
-createToggle("Anti-AFK (Bypass Kick)", "AntiAFK", true)
+createToggle("Infinite Jump", "InfJump")
 
--- LOGIC 1: Auto Eat/Drink/Grow (Safe Fire)
+-- LOGIC 1: Auto Eat/Drink/Grow/Breath
 task.spawn(function()
     while task.wait(1) do
-        if toggles.AutoEat then
-            safeFire(getRemote("Eat"))
-        end
-        if toggles.AutoDrink then
-            safeFire(getRemote("Drink"))
-        end
-        if toggles.AutoGrow then
-            safeFire(getRemote("Grow") or getRemote("Age"))
+        if toggles.AutoEat then safeFire(getRemote("Eat")) end
+        if toggles.AutoDrink then safeFire(getRemote("Drink")) end
+        if toggles.AutoGrow then safeFire(getRemote("Grow") or getRemote("Age")) end
+    end
+end)
+
+task.spawn(function()
+    while task.wait(0.8) do
+        if toggles.AutoBreath then
+            safeFire(getRemote("Breath") or getRemote("Ability") or getRemote("Attack"))
         end
     end
 end)
 
--- LOGIC 2: Auto Farm Mushroom
--- Scans workspace for ProximityPrompts related to mushrooms and interacts with them.
+-- LOGIC 2: Auto Farm Mushroom (Radius)
 task.spawn(function()
     while task.wait(0.5) do
         if toggles.AutoMushroom then
@@ -149,7 +157,6 @@ task.spawn(function()
                     local objName = obj.Name:lower()
                     
                     if parentName:match("mushroom") or objName:match("mushroom") or actionText:match("eat") or actionText:match("collect") then
-                        -- Distance check (radius 20 studs)
                         local dist = (LP.Character.HumanoidRootPart.Position - obj.Parent.Position).Magnitude
                         if dist < 20 then
                             pcall(function()
@@ -164,7 +171,61 @@ task.spawn(function()
     end
 end)
 
--- LOGIC 3: Speed
+-- LOGIC 3: Auto Event (Teleport)
+task.spawn(function()
+    while task.wait(2) do
+        if toggles.AutoEvent then
+            local char = LP.Character
+            if not char or not char:FindFirstChild("HumanoidRootPart") then continue end
+            
+            local originalPos = char.HumanoidRootPart.CFrame
+            local foundEvent = false
+
+            for _, obj in pairs(Workspace:GetDescendants()) do
+                if obj:IsA("ProximityPrompt") then
+                    local pName = obj.Parent.Name:lower()
+                    local oName = obj.Name:lower()
+                    local aText = obj.ActionText:lower()
+                    
+                    -- Deteksi keyword event Pony Town (CoS)
+                    if pName:match("event") or pName:match("gacha") or pName:match("merchant") or pName:match("meteor") 
+                    or oName:match("event") or oName:match("gacha") or oName:match("merchant") or oName:match("meteor")
+                    or aText:match("open") or aText:match("claim") or aText:match("collect") then
+                        
+                        foundEvent = true
+                        local targetPos = obj.Parent.Position
+                        
+                        -- Teleport ke event
+                        pcall(function()
+                            char.HumanoidRootPart.CFrame = CFrame.new(targetPos + Vector3.new(0, 5, 0))
+                        end)
+                        
+                        task.wait(0.5) -- Tunggu loading map
+                        
+                        -- Ambil reward
+                        pcall(function()
+                            obj.HoldDuration = 0
+                            fireproximityprompt(obj)
+                        end)
+                        
+                        task.wait(0.5)
+                        break -- Fokus ke satu event dulu
+                    end
+                end
+            end
+            
+            -- Balik ke posisi awal kalau udah selesai ambil event
+            if foundEvent then
+                task.wait(1)
+                pcall(function()
+                    char.HumanoidRootPart.CFrame = originalPos
+                end)
+            end
+        end
+    end
+end)
+
+-- LOGIC 4: Speed
 RunService.Heartbeat:Connect(function()
     if toggles.Speed then
         local char = LP.Character
@@ -179,7 +240,17 @@ RunService.Heartbeat:Connect(function()
     end
 end)
 
--- LOGIC 4: Hitbox Expander (Optimized to prevent freeze)
+-- LOGIC 5: Infinite Jump
+UserInputService.JumpRequest:Connect(function()
+    if toggles.InfJump then
+        local char = LP.Character
+        if char and char:FindFirstChild("Humanoid") then
+            char.Humanoid:ChangeState(Enum.HumanoidStateType.Jumping)
+        end
+    end
+end)
+
+-- LOGIC 6: Hitbox Expander
 task.spawn(function()
     while task.wait(0.2) do
         if toggles.Hitbox then
@@ -208,7 +279,7 @@ task.spawn(function()
     end
 end)
 
--- LOGIC 5: ESP (Highlight)
+-- LOGIC 7: ESP
 local highlights = {}
 RunService.Heartbeat:Connect(function()
     if toggles.ESP then
@@ -240,10 +311,4 @@ Players.PlayerRemoving:Connect(function(plr)
     end
 end)
 
--- LOGIC 6: Anti-AFK (Keamanan biar nggak di-kick pas AFK)
-LP.Idled:Connect(function()
-    if toggles.AntiAFK then
-        VirtualUser:CaptureController()
-        VirtualUser:ClickButton2(Vector2.new())
-    end
-end)
+print("CoS Hub v3.0 Loaded!")
